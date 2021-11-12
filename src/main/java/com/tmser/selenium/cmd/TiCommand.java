@@ -63,11 +63,11 @@ public class TiCommand extends BaseCommand {
     @Autowired
     private MitmProxy mitmProxy;
 
-
     @PostConstruct
     public  void init(){
         TiSeleniumTools.setAddressInfo(addressInfo);
         TiSeleniumTools.setInvoiceInfo(invoiceInfo);
+        TiSeleniumTools.setNoticeService(noticeService);
     }
     @ShellMethod("start webdriver.")
     public String start(
@@ -109,6 +109,7 @@ public class TiCommand extends BaseCommand {
             case CHROME:
                 ChromeOptions opes = new ChromeOptions();
                 opes.addArguments("start-maximized");
+                opes.addArguments("lang=zh-CN");
                 opes.setExperimentalOption("useAutomationExtension", Boolean.FALSE);
                 opes.setExperimentalOption("excludeSwitches", Lists.newArrayList("enable-automation"));
                 opes.addArguments("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.71 Safari/537.36");
@@ -168,6 +169,30 @@ public class TiCommand extends BaseCommand {
             }
         } catch (Exception e) {
             logger.info("close failed!", e);
+            driver = null;
+        }
+
+        return SUCCESS;
+    }
+
+    @ShellMethod(value = "start proxy.",key = "start-proxy")
+    public String startProxy() {
+        try {
+          mitmProxy.start();
+        } catch (Exception e) {
+            logger.info("start proxy failed!", e);
+            driver = null;
+        }
+
+        return SUCCESS;
+    }
+
+    @ShellMethod(value = "stop proxy.",key = "stop-proxy")
+    public String stopProxy() {
+        try {
+            mitmProxy.stop();
+        } catch (Exception e) {
+            logger.info("start proxy failed!", e);
             driver = null;
         }
 
@@ -264,12 +289,6 @@ public class TiCommand extends BaseCommand {
     }
 
 
-    @ShellMethod(value = "start mitm proxy", key = "start-proxy")
-    public String startProxy() {
-         mitmProxy.start();
-         return SUCCESS;
-    }
-
     @ShellMethod(value = "set distribution", key = "set-distribution")
     public String distribution() {
         if (checkNotStarted()) {
@@ -326,9 +345,10 @@ public class TiCommand extends BaseCommand {
         return "no such key";
     }
     @ShellMethod(value = "mouse move", key = "mv")
-    public String mourseMove(@ShellOption(defaultValue = "0") Integer x, @ShellOption(defaultValue = "0") Integer y) {
+    public String mourseMove(@ShellOption(defaultValue = "0") Integer x, @ShellOption(defaultValue = "0") Integer y) throws InterruptedException {
         logger.info("mouse move {}", x, y);
-        TiSeleniumTools.mouseMove(x, y);
+        Thread.sleep(5000);
+        TiSeleniumTools.moveAndClick(x, y);
         return SUCCESS;
     }
 
@@ -373,8 +393,17 @@ public class TiCommand extends BaseCommand {
     }
 
     @ShellMethod(value = "set y offset.", key = "set-y")
-    public String setYoffset(@ShellOption(defaultValue = "0") int yoffset) {
+    public String setYoffset(@ShellOption(defaultValue = "0") int yoffset) throws InterruptedException {
+        Thread.sleep(5000);
         TiSeleniumTools.baseOffsetY = yoffset;
+        return SUCCESS;
+    }
+
+
+    @ShellMethod(value = "scroll.", key = "scroll")
+    public String scroll(@ShellOption(defaultValue = "0") int len) throws InterruptedException {
+        Thread.sleep(5000);
+        TiSeleniumTools.scrollWindow(len);
         return SUCCESS;
     }
 

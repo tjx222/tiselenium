@@ -2,6 +2,7 @@ package com.tmser.selenium.tools;
 
 import com.google.common.collect.Maps;
 import com.tmser.selenium.cmd.AddressInfo;
+import com.tmser.selenium.cmd.BaseCommand;
 import com.tmser.selenium.cmd.InvoiceInfo;
 import org.openqa.selenium.*;
 import org.openqa.selenium.NoSuchElementException;
@@ -22,6 +23,8 @@ import java.io.InputStreamReader;
 import java.time.Duration;
 import java.util.*;
 import java.util.List;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -33,6 +36,18 @@ public class TiSeleniumTools {
 
     static Robot robot;
 
+    static volatile int errorCount = 0;
+
+    static volatile int refleshCount = 0;
+
+    public static volatile boolean stop = false;
+
+    public static Map<String,Semaphore> semaphoreMap = Maps.newHashMap();
+
+    public static Map<String,Integer> resultMap = Maps.newHashMap();
+
+    static NoticeService noticeService;
+
     static {
         try {
             robot = new Robot();
@@ -41,7 +56,9 @@ public class TiSeleniumTools {
         }
     }
 
-    public static int baseOffsetY = 86;
+    public static int baseOffsetY = 76;
+
+    public static int baseOffsetX = 140;
 
     public static final String CONTROL_UP = "K_CRU";
     public static final String CONTROL_DOWN = "K_CRD";
@@ -82,28 +99,46 @@ public class TiSeleniumTools {
     }
 
     public static Map<String, Integer> queryStorage(WebDriver driver, Set<String> codes) {
+        errorCount = 0;
+        refleshCount = 0;
+        stop = false;
         Map<String, Integer> result = Maps.newHashMap();
-        Wait<WebDriver> pageWait = newFluentWait(driver);
-        WebElement input = findElementAndDo(driver, pageWait, ID, "tiResponsiveHeader", element -> element);
+        Wait<WebDriver> pageWait = newFluentWait(driver, 60);
+
+        WebElement input = findElementAndDo(driver, pageWait, ID, "tiResponsiveHeader", element -> {
+            if(element == null){
+                return null;
+            }
+            findElementAndDo(driver, pageWait, ID , "sec-overlay", ele->{
+                return ele.isDisplayed() == false;
+            });
+            return element;
+        });
         if (input == null) {
             logger.info("to long for load storage page");
             return result;
         }
-        Wait<WebDriver> wait = newFluentWait(driver, 5);
-        int offset = 900;
-        scrollWindow(driver, offset);
+
+
+        Wait<WebDriver> wait = newFluentWait(driver, 10);
+        //int offset = 900;
+        scrollWindow(20);
         Actions actions = new Actions(driver);
-        actions.pause(2*randKeyTime()).perform();
-        scrollWindow(driver, offset);
+        actions.pause(2 * randKeyTime()).perform();
+        scrollWindow(-30);
+        actions.pause(2 * randKeyTime()).perform();
+        scrollWindow(9);
         int i = 1;
         for (String code : codes) {
-            try {
-                int storage = loadStorage(driver, wait, code, i++, offset);
-                result.put(code, storage);
-            } catch (TimeoutException e) {
-                logger.info("can't find any storage");
-                result.put(code, 0);
+            if(stop){
+                return result;
             }
+            int storage = loadStorageByRobot(driver, pageWait, wait, code, i++, 0);
+            if (storage > 0) {
+                noticeService.sendStorageMsg("【 " + code + " : " + storage +
+                        " 】,\n [快速购买](" + BaseCommand.DEFAULT_PRODUCT_PAGE +code + " )");
+            }
+            result.put(code, storage);
         }
         return result;
     }
@@ -178,7 +213,8 @@ public class TiSeleniumTools {
             WebElement button = null;
             button = wait.until(ExpectedConditions.elementToBeClickable(By.cssSelector("div.ti-quick-add-to-cart-worksheet-actions ti-button")));
             action.pause(3 * randKeyTime()).moveToElement(button).pause(randKeyTime()).perform();
-            randMove(button.getRect(), 0);
+            Rectangle rect = button.getRect();
+            moveTo(rect.x, rect.y);
             action.pause(3 * randKeyTime()).moveToElement(button).pause(randKeyTime()).click().perform();//点击添加到购物车，等待10s
             return waitNotInPage(wait, "/quick-add-to-cart");
         } catch (Exception e) {
@@ -276,19 +312,27 @@ public class TiSeleniumTools {
     }
 
     public static <R> R findElementAndDo(WebDriver driver, String key, String searchStr, Function<WebElement, R> consumer) {
-        WebElement element = findElement(driver, key, searchStr);
         R r = null;
-        if (element != null) {
-            try {
-                if (consumer != null) {
-                    r = consumer.apply(element);
-                }
-            }finally {
-                TiSeleniumTools.excuteJs(driver, "setTimeout(\"delete document['$cdc_asdjflasutopfhvcZLmcfl_']\",5);");
+        try {
+            WebElement element = findElement(driver, key, searchStr);
+            if (element != null && consumer != null) {
+                r = consumer.apply(element);
             }
+        } finally {
+            clearTag(driver);
         }
 
         return r;
+    }
+
+    public static void doSomething(WebDriver driver, Consumer<WebDriver> consumer) {
+        try {
+            if (driver != null && consumer != null) {
+                consumer.accept(driver);
+            }
+        } finally {
+            clearTag(driver);
+        }
     }
 
     public static boolean findElementAndDo(WebDriver driver, Wait<WebDriver> wait, String key, String searchStr) {
@@ -296,20 +340,24 @@ public class TiSeleniumTools {
     }
 
     public static <R> R findElementAndDo(WebDriver driver, Wait<WebDriver> wait, String key, String searchStr, Function<WebElement, R> consumer) {
-        WebElement element = findElement(wait, key, searchStr);
         R r = null;
-        if (element != null) {
-            try {
-                if (consumer != null) {
-                    r = wait.until(driver1 -> {
-                        return consumer.apply(element);
-                    });
-                }
-            }finally {
-                TiSeleniumTools.excuteJs(driver, "setTimeout(\"delete document['$cdc_asdjflasutopfhvcZLmcfl_']\",5);");
+        try {
+            WebElement element = findElement(wait, key, searchStr);
+            if (element != null && consumer != null) {
+                r = wait.until(driver1 -> {
+                    return consumer.apply(element);
+                });
             }
+        } finally {
+            clearTag(driver);
         }
         return r;
+    }
+
+
+
+    private static void clearTag(WebDriver driver) {
+        TiSeleniumTools.excuteJs(driver, "setTimeout(\"delete document['$cdc_asdjflasutopfhvcZLmcfl_']\",20);console.log('delete');");
     }
 
     public static WebElement findElement(Wait<WebDriver> wait, String key, String searchStr) {
@@ -367,41 +415,46 @@ public class TiSeleniumTools {
 
 
     //随机移动, 移动2秒
-    public static void randMove(Rectangle rectangle, int offsetHeight) {
-        try {
-            int xoffset = 0, yoffset = 0;
-            if (rectangle != null) {
-                xoffset = rectangle.x;
-                yoffset = rectangle.y - offsetHeight + rectangle.height / 2 + baseOffsetY;
-            }
+    public static void randMove(int x, int y, int endX, int endY) {
+        logger.info("mouse start: {}:{} - {}:{}", x, y, endX, endY);
+        List<java.awt.Point> points = RandomArc.randomLine(x, y, endX, endY);
+        for (java.awt.Point p : points) {
+            mouseMove(p.x, p.y);
+        }
+    }
 
-            logger.info("mouse start: {} - {}", xoffset, yoffset);
-            List<java.awt.Point> points = RandomArc.randomLine(xoffset, yoffset,
-                    (int) (xoffset + (50 + 150 * Math.random())), (int) (yoffset + (30 + 60 * Math.random())));
-            for (java.awt.Point p : points) {
-                mouseMove(p.x, p.y);
-            }
-            if (robot != null) {
-                Point location = MouseInfo.getPointerInfo().getLocation();
-                logger.info("mouse pos: {} - {} ", location.x, location.y);
-            }
+
+    public static void moveTo(int x, int y) {
+        try {
+            logger.info("mouse start: {} - {}", x, y);
+            Point location = MouseInfo.getPointerInfo().getLocation();
+            randMove(location.x, location.y, x, y);
         } catch (Exception e) {
-            logger.info("can't move");
+            logger.info("can't move", e);
         }
     }
 
     public static void moveAndClick(Rectangle rectangle, int offsetHeight) {
-        try {
-            int xoffset = 0, yoffset = 0;
-            if (rectangle != null) {
-                xoffset = rectangle.x + rectangle.width / 2;
-                yoffset = rectangle.y + rectangle.height / 2 + baseOffsetY - offsetHeight;
-            }
+        int xoffset = 0, yoffset = 0;
+        if (rectangle != null) {
+            xoffset = rectangle.x + rectangle.width / 2;
+            yoffset = rectangle.y + rectangle.height / 2 + baseOffsetY - offsetHeight;
+        }
 
+        moveAndClick(xoffset, yoffset);
+    }
+
+
+    public static void moveAndClick(int x, int y) {
+        try {
+            int xoffset = x, yoffset = y;
             logger.info("mouse start: {} - {}", xoffset, yoffset);
-            mouseMove(xoffset, yoffset);
+            Point location = MouseInfo.getPointerInfo().getLocation();
+
+            randMove(location.x, location.y, xoffset, yoffset);
 
             if (robot != null) {
+                robot.delay(4 * randKeyTime());
                 robot.mousePress(KeyEvent.BUTTON1_DOWN_MASK);
                 robot.delay(randKeyTime());
                 robot.mouseRelease(KeyEvent.BUTTON1_DOWN_MASK);
@@ -431,10 +484,10 @@ public class TiSeleniumTools {
                     robot.keyRelease(KeyEvent.VK_SHIFT);
                     isShiftDown = false;
                 }
-                robot.delay(randKeyTime() / 3);
+                robot.delay(6 * randKeyTime());
             }
 
-            robot.delay(3 * randKeyTime());
+            robot.delay(10 * randKeyTime());
         } catch (Exception e) {
             logger.info("move failed", e);
         }
@@ -454,7 +507,8 @@ public class TiSeleniumTools {
             Wait<WebDriver> wait = newFluentWait(driver);
             WebElement button = wait.until(ExpectedConditions.elementToBeClickable(By.id("tiCartCalculate_Checkout")));
             scrollWindow(driver, "tiCartCalculate_Checkout");
-            randMove(button.getRect(), 0);
+            Rectangle rect = button.getRect();
+            moveTo(rect.x, rect.y);
             action.pause(20 * randKeyTime()).moveToElement(button).pause(30 * randKeyTime()).perform();//
             button.click();
             action.pause(10 * randKeyTime());
@@ -562,6 +616,8 @@ public class TiSeleniumTools {
             if (robot == null) {
                 return;
             }
+
+
             robot.mouseMove(x, y);
 
             robot.delay(randKeyTime() / 3);
@@ -573,9 +629,9 @@ public class TiSeleniumTools {
     }
 
     public static void printMousePos() {
-        if (logger.isInfoEnabled()) {
+        if (logger.isDebugEnabled()) {
             Point location = MouseInfo.getPointerInfo().getLocation();
-            logger.info("mouser pos: {}, {}", location.x, location.y);
+            logger.debug("mouser pos: {}, {}", location.x, location.y);
         }
     }
 
@@ -743,7 +799,8 @@ public class TiSeleniumTools {
             WebElement divScroll = wait.until(d -> d.findElement(By.id("js-checkout-toc-textbox")));
             scrollWindow(driver, "js-checkout-toc-textbox");
             action.moveToElement(divScroll).pause(randKeyTime()).perform();
-            randMove(divScroll.getRect(), 0);
+            Rectangle rect = divScroll.getRect();
+            moveTo(rect.x, rect.y);
             String scrollJs = "document.getElementById(\"js-checkout-toc-textbox\").scrollTop = 30;delete window['$cdc_asdjflasutopfhvcZLmcfl_'];delete document['$cdc_asdjflasutopfhvcZLmcfl_'];";
             excuteJs(driver, scrollJs);
 
@@ -817,6 +874,12 @@ public class TiSeleniumTools {
     public static void scrollWindow(WebDriver driver, int heightOffset) {
         String scrollJs = "window.scrollTo(0," + heightOffset + ");delete window['$cdc_asdjflasutopfhvcZLmcfl_']; delete document['$cdc_asdjflasutopfhvcZLmcfl_'];";
         excuteJs(driver, scrollJs);
+    }
+
+    public static void scrollWindow(int heightOffset) {
+        if (robot != null) {
+            robot.mouseWheel(heightOffset);
+        }
     }
 
     public static void excuteJs(WebDriver driver, String scrollJs) {
@@ -912,5 +975,218 @@ public class TiSeleniumTools {
         }
 
         return 0;
+    }
+
+    /**
+     * 使用按键模拟加载
+     *
+     * @param driver
+     * @param wait
+     * @param code
+     * @param line
+     * @param offset
+     * @return
+     */
+    private static int loadStorageByRobot(WebDriver driver,Wait<WebDriver> pageWait, Wait<WebDriver> wait, String code, int line, int offset) {
+        int baseX = baseOffsetX + 156, baseY = baseOffsetY + offset;
+        try {
+            Actions action = new Actions(driver);
+            if (line > 5) {//固定都
+                line = 6;
+            }
+            if (line == 1) {
+                findElementAndDo(driver, wait, XPATH, "//tbody/tr[" + line + "]/td[2]/ti-input", null); //等待加载完成
+            }
+
+            action.pause(randKeyTime()).perform();
+            if (line > 4) {
+                action.pause(2 * randKeyTime()).perform();
+                moveAndClick(baseX - 70, baseY + 36 + 5 * 50);
+                //scrollWindow(driver, 50);
+                //offset = offset + (line - 4) * 50;
+            }
+            action.pause(randKeyTime()).perform();
+
+            moveAndClick(baseX, baseY + line * 50);
+            sendKeys(code + "\n");
+
+            action.pause(2 * randKeyTime()).perform();
+            moveAndClick(baseX + 290, baseY + line * 50);
+            sendKeys("1");
+            action.pause(2 * randKeyTime()).perform();
+
+            String text = findElementAndDo(driver, wait, XPATH, "//tbody/tr[" + line + "]/td[5]", ele -> {
+                try {
+                    pageWait.until(d->{
+                        WebElement e =d.findElement(By.id("sec-overlay"));
+                        return e.isDisplayed() == false;
+                    });
+
+                    String elementText = ele.getText();
+                    return elementText != null && elementText.length() > 0 ? elementText : null;
+                } catch (StaleElementReferenceException e) {
+                    return null;
+                }
+            });
+
+            Integer storageCount = Integer.valueOf(text.replaceAll(",", ""));
+            logger.info("{}: {} storage is {}", line, code, text);
+
+  /*          findElementAndDo(driver, XPATH, "//tbody/tr[" + line + "]/td[4]/ti-input", input1 -> {
+                action.moveToElement(input1).pause(randKeyTime()).click()
+                        .pause(randKeyTime()).sendKeys(String.valueOf(storageCount)).perform();
+            });*/
+
+            action.pause(5 * randKeyTime()).perform();
+            if (line > 5) {
+                moveAndClick(baseX + 1026, baseY + line * 50);
+                action.pause(10 * randKeyTime()).perform();
+                moveAndClick(baseX + 1025, baseY + line * 50);
+            }
+            return storageCount;
+        } catch (Exception e) {
+            logger.info("query storage for {} failed, line : {}, message:{}, ", code, line, e.getMessage());
+            if (errorCount > 2) {
+                errorCount = 0;
+                Actions actions = new Actions(driver);
+                doSomething(driver, d->{
+                    driver.manage().deleteAllCookies();
+                    driver.navigate().refresh();
+                    actions.pause(200 * randKeyTime()).perform();
+                });
+                scrollWindow(20);
+                actions.pause(2 * randKeyTime()).perform();
+                scrollWindow(-30);
+                actions.pause(2 * randKeyTime()).perform();
+                scrollWindow(9);
+                if (refleshCount > 3) {
+                    refleshCount = -2;
+                    actions.pause(60000).perform();
+                }
+                if (refleshCount == -1) {
+                    refleshCount = 0;
+                    errorCount = 0;
+                    actions.pause(120000).perform();
+                }
+                refleshCount=refleshCount+1;
+                return 0;
+            }
+
+
+            if (line > 5) {
+                moveAndClick(baseX + 1026, baseY + line * 50);
+            }
+            errorCount++;
+        }finally {
+            clearTag(driver);
+        }
+
+        return 0;
+    }
+
+    /**
+     * 使用按键模拟, mitm 获取
+     *
+     * @param code
+     * @param line
+     * @param offset
+     * @return
+     */
+    private static int loadStorageByRobot( String code, int line, int offset) {
+        Semaphore semaphore = null;
+        int baseX = baseOffsetX + 156, baseY = baseOffsetY + offset;
+        try {
+            semaphoreMap.get(code);
+            if(semaphore == null){
+                semaphore =  new Semaphore(1);
+                semaphoreMap.put(code, semaphore);
+            }
+            semaphore.acquire();
+
+            if (line > 5) {//固定都
+                line = 6;
+            }
+            if (line == 1) {
+                pause(5000); //等待加载完成
+            }
+
+            pause(randKeyTime());
+            if (line > 4) {
+                pause(2 * randKeyTime());
+                moveAndClick(baseX - 70, baseY + 36 + 5 * 50);
+                //scrollWindow(driver, 50);
+                //offset = offset + (line - 4) * 50;
+            }
+            pause(randKeyTime());
+
+            moveAndClick(baseX, baseY + line * 50);
+            sendKeys(code + "\n");
+
+
+
+            pause(2 * randKeyTime());
+            moveAndClick(baseX + 290, baseY + line * 50);
+            sendKeys("1");
+            pause(2 * randKeyTime());
+
+            Integer storageCount = Integer.valueOf(0);
+            if(semaphore.tryAcquire(1,10,TimeUnit.SECONDS)){
+                storageCount = resultMap.get(code);
+                logger.info("{}: {} storage is {}", line, code, storageCount);
+            }
+
+            pause(5 * randKeyTime());
+            if (line > 5) {
+                moveAndClick(baseX + 1026, baseY + line * 50);
+                pause(10 * randKeyTime());
+                moveAndClick(baseX + 1025, baseY + line * 50);
+            }
+            return storageCount;
+        } catch (Exception e) {
+            logger.info("query storage for {} failed, line : {}, message:{}, ", code, line, e.getMessage());
+            if (errorCount > 2) {
+                errorCount = 0;
+                scrollWindow(20);
+                pause(2 * randKeyTime());
+                scrollWindow(-30);
+                pause(2 * randKeyTime());
+                scrollWindow(9);
+                if (refleshCount > 3) {
+                    refleshCount = -2;
+                    pause(60000);
+                }
+                if (refleshCount == -1) {
+                    refleshCount = 0;
+                    errorCount = 0;
+                    pause(120000);
+                }
+                refleshCount=refleshCount+1;
+                return 0;
+            }
+
+            if (line > 5) {
+                moveAndClick(baseX + 1026, baseY + line * 50);
+            }
+            errorCount++;
+        }finally {
+            if(semaphore != null && semaphore.availablePermits() == 0){
+                semaphore.release();
+            }
+        }
+
+        return 0;
+    }
+
+    private static void pause(int i) {
+        try{
+            TimeUnit.MILLISECONDS.sleep(i);
+        }catch (Exception e){
+            //do nothing
+        }
+    }
+
+
+    public static void setNoticeService(NoticeService noticeService) {
+        TiSeleniumTools.noticeService = noticeService;
     }
 }

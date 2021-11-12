@@ -7,7 +7,6 @@ import com.google.common.collect.Sets;
 import com.tmser.selenium.tools.NoticeService;
 import com.tmser.selenium.tools.TiSeleniumTools;
 import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.json.Json;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,10 +51,10 @@ public class StorageTask implements Task {
                         if(!running){
                             return;
                         }
-                        if(pidSet.size() >= 10){ //最多30条 执行一次
+                       /* if(pidSet.size() >= 10){ //最多30条 执行一次
                             doQueryStorage(driver, pidSet);
                             pidSet.clear();
-                        }
+                        }*/
                     }
                 }
                 if (pidSet.isEmpty()) {
@@ -64,9 +63,17 @@ public class StorageTask implements Task {
                 }
             }
             if(running){
-                doQueryStorage(driver, pidSet);
+                try {
+                    doQueryStorage(driver, pidSet);
+                } catch (Exception e) {
+                    logger.error("failed query storage: ", e);
+                    running = false;
+                    break;
+                }
+                driver.manage().deleteAllCookies();
+                driver.navigate().refresh();
             }
-        }while (false);
+        }while (running);
     }
 
     private void doQueryStorage(WebDriver driver, Set<String> pidSet) {
@@ -90,8 +97,8 @@ public class StorageTask implements Task {
             logger.info("has storage info: {}", result);
         }
 
-        driver.manage().deleteAllCookies();
-        driver.navigate().refresh();
+       // driver.manage().deleteAllCookies();
+       // driver.navigate().refresh();
     }
 
     @Override

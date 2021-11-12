@@ -28,7 +28,7 @@ public class RandomArc {
                 arcEndX = endX;
             }else{
                 //随机产生两点直线间的分割点
-                yChange += new Random().nextInt(Math.abs(endY - startY)/2) + Math.abs(endY - startY)/10;
+                yChange += randInt(startY, endY) + Math.abs(endY - startY)/10;
                 if(endY > startY){
                     arcEndY = startY + yChange;
                 }else{
@@ -58,6 +58,12 @@ public class RandomArc {
 
         return allPoint;
     }
+
+    private static int randInt(int startY, int endY) {
+        int diff = Math.abs(endY - startY)/2;
+        return diff > 0 ? new Random().nextInt(diff): diff;
+    }
+
 
     //生成一段贝叶斯曲线
     private static List<Point> setGroup(int startX, int startY, int endX, int endY, boolean isLeft){
@@ -101,7 +107,7 @@ public class RandomArc {
     public static void main(String[] args) {
         int xoffset = 40, yoffset = 40;
         List<java.awt.Point> points = RandomArc.randomLine(xoffset, yoffset,
-                (int) (xoffset + (50 + 150 * Math.random())), (int) (yoffset + (30 + 60 * Math.random())));
+                (int) (xoffset + (50 + 150 * Math.random())), 41);
         System.out.println("points: " + points.size());
         for (Point p: points
              ) {

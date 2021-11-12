@@ -33,14 +33,13 @@ public class MitmProxy {
         remoteMitmproxy.addFlowFilter(new FlowFilter() {
 
             @Override
-            public void filterRequest(FlowRequest flowRequest) {
+            public void filterRequest(FlowRequest flowRequest) throws InterruptedException {
             }
 
             private boolean needFilter(FlowRequest flowRequest) {
                 String url = flowRequest.getUrl();
-                logger.info("filter url: {}", url);
                 String method = flowRequest.getMethod();
-                if("get".equals(method.toLowerCase()) && url.contains("ti.com")){
+                if("post".equals(method.toLowerCase()) && url.contains("/cart/inventory")){
                     String uri = url.substring(8);
                     if(!uri.substring(uri.indexOf('/')).contains(".")){
                         return true;
@@ -53,10 +52,13 @@ public class MitmProxy {
             public void filterResponse(FlowResponse flowResponse) {
                 FlowRequest flowRequest = flowResponse.getRequest();
                 if (needFilter(flowRequest)) {
-                   String oldContent = flowResponse.getContentAsString();
-                   //String newContent = oldContent.replaceAll("\\\\x24","\\\\x24\\\\x5F");
-                   logger.info("replace success");
-                   //flowResponse.setContentAsString(newContent);
+                    int statusCode = flowResponse.getStatusCode();
+                    if(statusCode == 200){
+                        String oldContent = flowResponse.getContentAsString();
+                        //String newContent = oldContent.replaceAll("\\\\x24","\\\\x24\\\\x5F");
+                        logger.info("replace success: {}", oldContent );
+                        flowResponse.setContentAsString(oldContent);
+                    }
                 }
             }
 
@@ -67,7 +69,7 @@ public class MitmProxy {
     }
 
     @PreDestroy
-    private void stop(){
+    public void stop(){
         if(remoteMitmproxy != null){
             remoteMitmproxy.stop();
         }

@@ -31,8 +31,9 @@ public class KeyParse {
             }
 
             switch (c){
-                case 10: keyCodes.add(VK_ENTER); break;
-                case 32: keyCodes.add(VK_ENTER); break;
+                case '\n': keyCodes.add(VK_ENTER); break;
+                case ' ': keyCodes.add(VK_SPACE); break;
+                case 17: keyCodes.add(VK_CONTROL); break;
 
                 // punctuation
                 case '<': keyCodes.add(VK_SHIFT);

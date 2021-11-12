@@ -13,4 +13,8 @@ public class BaseCommand {
                 "https://www.ti.com.cn/zh-cn/ordering-resources/buying-tools/quick-add-to-cart.html");
     }
 
+
+    public static final String DEFAULT_PRODUCT_PAGE = "https://www.ti.com/store/ti/zh/p/product/?p=";
+
+
 }
