@@ -103,37 +103,37 @@ public class TiSeleniumTools {
         refleshCount = 0;
         stop = false;
         Map<String, Integer> result = Maps.newHashMap();
-        Wait<WebDriver> pageWait = newFluentWait(driver, 60);
-
-        WebElement input = findElementAndDo(driver, pageWait, ID, "tiResponsiveHeader", element -> {
-            if(element == null){
-                return null;
-            }
-            findElementAndDo(driver, pageWait, ID , "sec-overlay", ele->{
-                return ele.isDisplayed() == false;
-            });
-            return element;
-        });
-        if (input == null) {
-            logger.info("to long for load storage page");
-            return result;
-        }
-
-
-        Wait<WebDriver> wait = newFluentWait(driver, 10);
+//        Wait<WebDriver> pageWait = newFluentWait(driver, 60);
+//
+//        WebElement input = findElementAndDo(driver, pageWait, ID, "tiResponsiveHeader", element -> {
+//            if(element == null){
+//                return null;
+//            }
+//            findElementAndDo(driver, pageWait, ID , "sec-overlay", ele->{
+//                return ele.isDisplayed() == false;
+//            });
+//            return element;
+//        });
+//        if (input == null) {
+//            logger.info("to long for load storage page");
+//            return result;
+//        }
+//
+//
+//        Wait<WebDriver> wait = newFluentWait(driver, 10);
         //int offset = 900;
         scrollWindow(20);
-        Actions actions = new Actions(driver);
-        actions.pause(2 * randKeyTime()).perform();
+     //   Actions actions = new Actions(driver);
+        pause(5 * randKeyTime());
         scrollWindow(-30);
-        actions.pause(2 * randKeyTime()).perform();
+        pause(82 * randKeyTime());
         scrollWindow(9);
         int i = 1;
         for (String code : codes) {
             if(stop){
                 return result;
             }
-            int storage = loadStorageByRobot(driver, pageWait, wait, code, i++, 0);
+            int storage = loadStorageByRobot(code, i++, 0);
             if (storage > 0) {
                 noticeService.sendStorageMsg("【 " + code + " : " + storage +
                         " 】,\n [快速购买](" + BaseCommand.DEFAULT_PRODUCT_PAGE +code + " )");
@@ -1133,8 +1133,11 @@ public class TiSeleniumTools {
             if(semaphore.tryAcquire(1,10,TimeUnit.SECONDS)){
                 storageCount = resultMap.get(code);
                 logger.info("{}: {} storage is {}", line, code, storageCount);
+            }else{
+                errorCount ++;
+                logger.info("query storage for {} failed, line : {}, message:{}, ", code, line);
             }
-
+            checkerror();
             pause(5 * randKeyTime());
             if (line > 5) {
                 moveAndClick(baseX + 1026, baseY + line * 50);
@@ -1143,27 +1146,6 @@ public class TiSeleniumTools {
             }
             return storageCount;
         } catch (Exception e) {
-            logger.info("query storage for {} failed, line : {}, message:{}, ", code, line, e.getMessage());
-            if (errorCount > 2) {
-                errorCount = 0;
-                scrollWindow(20);
-                pause(2 * randKeyTime());
-                scrollWindow(-30);
-                pause(2 * randKeyTime());
-                scrollWindow(9);
-                if (refleshCount > 3) {
-                    refleshCount = -2;
-                    pause(60000);
-                }
-                if (refleshCount == -1) {
-                    refleshCount = 0;
-                    errorCount = 0;
-                    pause(120000);
-                }
-                refleshCount=refleshCount+1;
-                return 0;
-            }
-
             if (line > 5) {
                 moveAndClick(baseX + 1026, baseY + line * 50);
             }
@@ -1176,6 +1158,29 @@ public class TiSeleniumTools {
 
         return 0;
     }
+
+    private static void checkerror() {
+        if (errorCount > 2) {
+            errorCount = 0;
+            scrollWindow(20);
+            pause(2 * randKeyTime());
+            scrollWindow(-30);
+            pause(2 * randKeyTime());
+            scrollWindow(9);
+            if (refleshCount > 3) {
+                refleshCount = -2;
+                pause(60000);
+            }
+            if (refleshCount == -1) {
+                refleshCount = 0;
+                errorCount = 0;
+                pause(120000);
+            }
+            refleshCount=refleshCount+1;
+        }
+    }
+
+
 
     private static void pause(int i) {
         try{

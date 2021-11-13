@@ -381,8 +381,8 @@ public class TiCommand extends BaseCommand {
     @ShellMethod(value = "start storage task.", key = "start-storage-task")
     public String startStorageTask() throws InterruptedException {
         Thread.sleep( 5000);
-        open("", 1);
-        storageTask.start(driver);
+        //open("", 1);
+        storageTask.start(null);
         return SUCCESS;
     }
 
