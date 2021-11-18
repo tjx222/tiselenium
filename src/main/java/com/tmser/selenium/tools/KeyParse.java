@@ -34,6 +34,7 @@ public class KeyParse {
                 case '\n': keyCodes.add(VK_ENTER); break;
                 case ' ': keyCodes.add(VK_SPACE); break;
                 case 17: keyCodes.add(VK_CONTROL); break;
+                case 0x74: keyCodes.add(VK_F5); break;
 
                 // punctuation
                 case '<': keyCodes.add(VK_SHIFT);

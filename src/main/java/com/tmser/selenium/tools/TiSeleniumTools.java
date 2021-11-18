@@ -18,6 +18,10 @@ import org.springframework.util.StringUtils;
 
 import java.awt.*;
 import java.awt.Point;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.StringSelection;
+import java.awt.datatransfer.Transferable;
 import java.awt.event.KeyEvent;
 import java.io.InputStreamReader;
 import java.time.Duration;
@@ -121,19 +125,26 @@ public class TiSeleniumTools {
 //
 //
 //        Wait<WebDriver> wait = newFluentWait(driver, 10);
+
+        Wait<Integer> wait=  new FluentWait<Integer>(1)
+                .withTimeout(Duration.ofSeconds(30))
+                .pollingEvery(Duration.ofMillis(200))
+                .ignoring(NoSuchElementException.class);
+        sendKeys("\0x74");
+        pause(5000);
         //int offset = 900;
         scrollWindow(20);
      //   Actions actions = new Actions(driver);
         pause(5 * randKeyTime());
         scrollWindow(-30);
-        pause(82 * randKeyTime());
+        pause(8 * randKeyTime());
         scrollWindow(9);
         int i = 1;
         for (String code : codes) {
             if(stop){
                 return result;
             }
-            int storage = loadStorageByRobot(code, i++, 0);
+            int storage = loadStorageByRobot(wait, code, i++, 0);
             if (storage > 0) {
                 noticeService.sendStorageMsg("【 " + code + " : " + storage +
                         " 】,\n [快速购买](" + BaseCommand.DEFAULT_PRODUCT_PAGE +code + " )");
@@ -464,6 +475,29 @@ public class TiSeleniumTools {
         }
     }
 
+    public static void moveAndDbclick(int x, int y) {
+        try {
+            int xoffset = x, yoffset = y;
+            logger.info("mouse start: {} - {}", xoffset, yoffset);
+            Point location = MouseInfo.getPointerInfo().getLocation();
+
+            randMove(location.x, location.y, xoffset, yoffset);
+
+            if (robot != null) {
+                robot.delay(4 * randKeyTime());
+                robot.mousePress(KeyEvent.BUTTON1_DOWN_MASK);
+                robot.delay(randKeyTime()/2);
+                robot.mouseRelease(KeyEvent.BUTTON1_DOWN_MASK);
+                robot.delay(randKeyTime()/2);
+                robot.mousePress(KeyEvent.BUTTON1_DOWN_MASK);
+                robot.delay(randKeyTime()/2);
+                robot.mouseRelease(KeyEvent.BUTTON1_DOWN_MASK);
+            }
+        } catch (Exception e) {
+            logger.info("can't move", e);
+        }
+    }
+
     public static void sendKeys(String keyStr) {
         try {
             if (robot == null) {
@@ -471,11 +505,16 @@ public class TiSeleniumTools {
             }
             List<Integer> keys = KeyParse.parseCode(keyStr);
             boolean isShiftDown = false;
+            boolean isCtrlDown = false;
             for (Integer key : keys) {
                 robot.keyPress(key);
 
-                if (key == KeyEvent.VK_SHIFT) {
+                if (key == KeyEvent.VK_SHIFT ) {
                     isShiftDown = true;
+                    continue;
+                }
+                if (key == KeyEvent.VK_CONTROL ) {
+                    isCtrlDown = true;
                     continue;
                 }
 
@@ -483,6 +522,10 @@ public class TiSeleniumTools {
                 if (isShiftDown) {
                     robot.keyRelease(KeyEvent.VK_SHIFT);
                     isShiftDown = false;
+                }
+                if (isCtrlDown) {
+                    robot.keyRelease(KeyEvent.VK_CONTROL);
+                    isCtrlDown = false;
                 }
                 robot.delay(6 * randKeyTime());
             }
@@ -522,9 +565,9 @@ public class TiSeleniumTools {
 
     //地址表单填写
     public static boolean addressForm(WebDriver driver, Wait<WebDriver> wait) {
-        logger.info("start----- fill address form");
         try {
             Actions action = new Actions(driver);
+        logger.info("start----- fill address form");
             AddressInfo addressInfo = getAddressInfo();
             if (Objects.nonNull(addressInfo.getType())) {
                 WebElement addressType = waitElemnt(driver, wait, ExpectedConditions.elementToBeClickable(By.xpath("//input[@value=\"" + addressInfo.getType() + "\"]")));
@@ -1092,24 +1135,12 @@ public class TiSeleniumTools {
      * @param offset
      * @return
      */
-    private static int loadStorageByRobot( String code, int line, int offset) {
-        Semaphore semaphore = null;
+    private static int loadStorageByRobot(Wait<Integer>wait, String code, int line, int offset) {
         int baseX = baseOffsetX + 156, baseY = baseOffsetY + offset;
         try {
-            semaphoreMap.get(code);
-            if(semaphore == null){
-                semaphore =  new Semaphore(1);
-                semaphoreMap.put(code, semaphore);
-            }
-            semaphore.acquire();
-
             if (line > 5) {//固定都
                 line = 6;
             }
-            if (line == 1) {
-                pause(5000); //等待加载完成
-            }
-
             pause(randKeyTime());
             if (line > 4) {
                 pause(2 * randKeyTime());
@@ -1122,22 +1153,24 @@ public class TiSeleniumTools {
             moveAndClick(baseX, baseY + line * 50);
             sendKeys(code + "\n");
 
-
-
             pause(2 * randKeyTime());
             moveAndClick(baseX + 290, baseY + line * 50);
             sendKeys("1");
             pause(2 * randKeyTime());
 
-            Integer storageCount = Integer.valueOf(0);
-            if(semaphore.tryAcquire(1,10,TimeUnit.SECONDS)){
-                storageCount = resultMap.get(code);
+            final int l = line;
+
+            Integer storageCount =  wait.until(v ->{
+                clearSysClipboardText();
+                moveAndDbclick(baseX + 390, baseY + l * 50);
+                pause(4 * randKeyTime());
+                sendKeys("\021c");
+                Integer rs = getSysClipboardText();
+                return rs >= 0 ? rs : null;
+            });
+            if(storageCount >= 0){
                 logger.info("{}: {} storage is {}", line, code, storageCount);
-            }else{
-                errorCount ++;
-                logger.info("query storage for {} failed, line : {}, message:{}, ", code, line);
             }
-            checkerror();
             pause(5 * randKeyTime());
             if (line > 5) {
                 moveAndClick(baseX + 1026, baseY + line * 50);
@@ -1146,14 +1179,15 @@ public class TiSeleniumTools {
             }
             return storageCount;
         } catch (Exception e) {
+            logger.info("query storage for {} failed, line : {}, message:{}, ", code, line);
+            errorCount++;
+            checkerror();
             if (line > 5) {
                 moveAndClick(baseX + 1026, baseY + line * 50);
             }
             errorCount++;
         }finally {
-            if(semaphore != null && semaphore.availablePermits() == 0){
-                semaphore.release();
-            }
+            clearSysClipboardText();
         }
 
         return 0;
@@ -1188,6 +1222,44 @@ public class TiSeleniumTools {
         }catch (Exception e){
             //do nothing
         }
+    }
+
+
+    /**
+     *1. 从剪切板获得文字。
+     */
+    public static Integer getSysClipboardText() {
+        Integer ret = -1;
+        Clipboard sysClip = Toolkit.getDefaultToolkit().getSystemClipboard();
+        // 获取剪切板中的内容
+        Transferable clipTf = sysClip.getContents(null);
+
+        if (clipTf != null) {
+            // 检查内容是否是文本类型
+            if (clipTf.isDataFlavorSupported(DataFlavor.stringFlavor)) {
+                try {
+                   String retStr = (String) clipTf
+                            .getTransferData(DataFlavor.stringFlavor);
+                    if(StringUtils.hasText(retStr)){
+                        ret = Integer.valueOf(retStr.trim());
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        return ret;
+    }
+
+    /**
+     * 2.将字符串复制到剪切板。
+     */
+    public static void clearSysClipboardText() {
+        Clipboard clip = Toolkit.getDefaultToolkit().getSystemClipboard();
+        Transferable tText = new StringSelection("");
+        clip.setContents(tText, null);
+
     }
 
 

@@ -51,10 +51,10 @@ public class StorageTask implements Task {
                         if(!running){
                             return;
                         }
-                       /* if(pidSet.size() >= 10){ //最多30条 执行一次
+                       if(pidSet.size() >= 60){ //最多30条 执行一次
                             doQueryStorage(driver, pidSet);
                             pidSet.clear();
-                        }*/
+                        }
                     }
                 }
                 if (pidSet.isEmpty()) {
@@ -70,8 +70,8 @@ public class StorageTask implements Task {
                     running = false;
                     break;
                 }
-                driver.manage().deleteAllCookies();
-                driver.navigate().refresh();
+               // driver.manage().deleteAllCookies();
+               // driver.navigate().refresh();
             }
         }while (running);
     }
